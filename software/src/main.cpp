@@ -45,6 +45,18 @@ void drawOLEDImageFromSamples(int frequencies);
 void setup()
 {
   Serial.begin(115200);
+  pinMode(A0, INPUT);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+  {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;)
+      ; // Don't proceed, loop forever
+  }
+  display.clearDisplay();
+  display.drawRect(10, 10, 50, 30, WHITE);
+  display.display();
+  Serial.println("OLED Display initialized!");
 
   currentSample = 0;
   lastTimeExecutedFFT = millis();
@@ -58,18 +70,8 @@ void setup()
   Serial.println("Interrupt function attached");
   timer1_enable(TIM_DIV1, TIM_EDGE, TIM_SINGLE);
   Serial.println("Timer enabled");
-  timer1_write(8000); // 2000 ticks for a sampling frequency of 40kHz; Timer has a frequency of 80MHz
-  interrupts();       // --> 1/80MHz = ticks/second --> 1/40kHz = samples/second --> (ticks/second) / (samples/second) = ticks/sample
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-  {
-    Serial.println(F("SSD1306 allocation failed"));
-    for (;;)
-      ; // Don't proceed, loop forever
-  }            
-  display.clearDisplay();
-  display.display();
-  Serial.println("OLED Display initialized!");
+  timer1_write(8000); // 8000 ticks for a sampling frequency of 10kHz; Timer has a frequency of 80MHz
+  interrupts();       // --> 1/80MHz = ticks/second --> 1/10kHz = samples/second --> (ticks/second) / (samples/second) = ticks/sample
 
   Serial.println("Finished setup");
 }
@@ -78,7 +80,7 @@ void loop()
 {
   if (isReadyToRead && !isReadyToCompute)
   {
-    vReal[currentSample] = (double)analogRead(A0);
+    vReal[currentSample] = 1024.0 - (double)analogRead(A0);
     vImag[currentSample] = 0.0;
     // Serial.print(currentSample);
     // Serial.print(" ");
@@ -119,8 +121,7 @@ void loop()
     Serial.println(v, 6);
     Serial.println();
     
-
-    drawOLEDImageFromSamples(8);
+    // drawOLEDImageFromSamples(8);
 
     lastTimeExecutedFFT = millis();
     isReadyToCompute = false;
@@ -158,7 +159,7 @@ void PrintVector(double *vData, uint16_t bufferSize, uint8_t scaleType)
 
 void IRAM_ATTR ISR(void)
 {
-  timer1_write(2000);
+  timer1_write(8000);
   isReadyToRead = true;
 }
 
@@ -204,18 +205,17 @@ void drawOLEDImageFromSamples(int frequencies)
     Serial.print(avgMagnitude);
     Serial.print(", ");
 
-    int rectHeight = avgMagnitude / 300;
-    if (rectHeight > 64)
-    {
-      rectHeight = 64;
-    }
+    int rectHeight = map(avgMagnitude, 0, 256, 0, 64);
     int rectWidth = SCREEN_WIDTH / frequencies;
     int rectPosX = i * SCREEN_WIDTH / frequencies;
     int rectPosY = 64;
 
     Serial.println(rectHeight);
 
-    // display.fillRect(rectPosX, rectPosY, rectWidth, rectHeight, 0);
+    if (rectHeight != 0)
+    {
+      // display.fillRect(rectPosX, rectPosY, rectWidth, rectHeight, WHITE);
+    }
   }
 
   display.display();
