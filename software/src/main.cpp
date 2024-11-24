@@ -202,7 +202,7 @@ void drawOLEDImageFromSamples(int frequencies)
       usedSamples = 0;
       for (int i = 0; i < sampleCount; i++)
       {
-        if (vReal[currentSample - i] < 3000)
+        if (vReal[currentSample - i] < 2000)
           continue;
         else
         {
@@ -221,7 +221,7 @@ void drawOLEDImageFromSamples(int frequencies)
       currentFrequency -= frequencyStep;
       for (int i = 0; i < sampleCount / 2; i++)
       {
-        if (vReal[currentSample - i] < 3000)
+        if (vReal[currentSample - i] < 2000)
           continue;
         else
         {
