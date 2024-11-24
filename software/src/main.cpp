@@ -3,9 +3,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Wire.h>
+#include <ESP8266WiFi.h>
 
-const int samples = 1024;                // This value MUST ALWAYS be a power of 2
-const double samplingFrequency = 10000; // 25us interval
+const int samples = 1024;               // This value MUST ALWAYS be a power of 2
+const double samplingFrequency = 20000;
 
 #define SCL_INDEX 0x00
 #define SCL_TIME 0x01
@@ -45,6 +46,15 @@ void drawOLEDImageFromSamples(int frequencies);
 void setup()
 {
   Serial.begin(115200);
+
+  WiFi.mode(WIFI_OFF);
+  WiFi.forceSleepBegin();
+  delay(1);
+  Serial.print("CPU Frequency set to: ");
+  Serial.println(ESP.getCpuFreqMHz());
+  delay(2000);
+
+
   pinMode(A0, INPUT);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
@@ -54,7 +64,7 @@ void setup()
       ; // Don't proceed, loop forever
   }
   display.clearDisplay();
-  display.drawRect(10, 10, 50, 30, WHITE);
+  display.drawRect(0, 10, 50, 30, WHITE);
   display.display();
   Serial.println("OLED Display initialized!");
 
@@ -68,10 +78,10 @@ void setup()
   Serial.println("ISR initialized");
   timer1_attachInterrupt(ISR);
   Serial.println("Interrupt function attached");
-  timer1_enable(TIM_DIV1, TIM_EDGE, TIM_SINGLE);
+  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);
   Serial.println("Timer enabled");
-  timer1_write(8000); // 8000 ticks for a sampling frequency of 10kHz; Timer has a frequency of 80MHz
-  interrupts();       // --> 1/80MHz = ticks/second --> 1/10kHz = samples/second --> (ticks/second) / (samples/second) = ticks/sample
+  timer1_write(250); // 500 ticks for a sampling frequency of 10kHz and a pre-scaler of 16; Timer has a frequency of 80MHz
+  interrupts();       // --> 1/(80MHz/16) = ticks/second --> 1/10kHz = samples/second --> (ticks/second) / (samples/second) = ticks/sample
 
   Serial.println("Finished setup");
 }
@@ -80,11 +90,7 @@ void loop()
 {
   if (isReadyToRead && !isReadyToCompute)
   {
-    vReal[currentSample] = 1024.0 - (double)analogRead(A0);
-    vImag[currentSample] = 0.0;
-    // Serial.print(currentSample);
-    // Serial.print(" ");
-    // Serial.println(vReal[currentSample]);
+    vReal[currentSample] = (double)analogRead(A0);
     currentSample++;
     isReadyToRead = false;
     if (currentSample > samples)
@@ -96,7 +102,11 @@ void loop()
 
   if (isReadyToCompute && lastTimeExecutedFFT + 500 < millis())
   {
-    FFT.dcRemoval();
+    for (int i = 0; i < samples; i++)
+    {
+      vReal[i] -= 512;        // remove dc value
+      vImag[i] = 0.0;         // fill imaginary values with zero
+    }
     // Serial.println("Data:");
     // PrintVector(vReal, samples, SCL_TIME);
     FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward); /* Weigh data */
@@ -115,10 +125,10 @@ void loop()
     double x;             // Print peak value
     double v;
     Serial.print("Peak: ");
-    FFT.majorPeakParabola(&x, &v);
-    Serial.print(x, 6);
+    FFT.majorPeak(&x, &v);
+    Serial.print(x, 2);
     Serial.print(", ");
-    Serial.println(v, 6);
+    Serial.println(v, 2);
     Serial.println();
     
     // drawOLEDImageFromSamples(8);
@@ -159,7 +169,6 @@ void PrintVector(double *vData, uint16_t bufferSize, uint8_t scaleType)
 
 void IRAM_ATTR ISR(void)
 {
-  timer1_write(8000);
   isReadyToRead = true;
 }
 
