@@ -5,7 +5,7 @@
 #include <Wire.h>
 #include <ESP8266WiFi.h>
 
-const int samples = 1024;               // This value MUST ALWAYS be a power of 2
+const int samples = 1024; // This value MUST ALWAYS be a power of 2
 const double samplingFrequency = 20000;
 
 #define SCL_INDEX 0x00
@@ -35,6 +35,7 @@ bool isReadyToCompute;
 double abscissa;
 
 unsigned long lastTimeExecutedFFT;
+unsigned long lastTimeExecutedOLED;
 
 /* Create FFT object */
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, samples, samplingFrequency, true);
@@ -54,22 +55,19 @@ void setup()
   Serial.println(ESP.getCpuFreqMHz());
   delay(2000);
 
-
   pinMode(A0, INPUT);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
   {
     Serial.println(F("SSD1306 allocation failed"));
-    for (;;)
-      ; // Don't proceed, loop forever
+    while (1)
+      ;
   }
-  display.clearDisplay();
-  display.drawRect(0, 10, 50, 30, WHITE);
-  display.display();
   Serial.println("OLED Display initialized!");
 
   currentSample = 0;
   lastTimeExecutedFFT = millis();
+  lastTimeExecutedOLED = millis();
   isReadyToRead = false;
   isReadyToCompute = false;
 
@@ -81,7 +79,7 @@ void setup()
   timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);
   Serial.println("Timer enabled");
   timer1_write(250); // 500 ticks for a sampling frequency of 10kHz and a pre-scaler of 16; Timer has a frequency of 80MHz
-  interrupts();       // --> 1/(80MHz/16) = ticks/second --> 1/10kHz = samples/second --> (ticks/second) / (samples/second) = ticks/sample
+  interrupts();      // --> 1/(80MHz/16) = ticks/second --> 1/10kHz = samples/second --> (ticks/second) / (samples/second) = ticks/sample
 
   Serial.println("Finished setup");
 }
@@ -93,19 +91,19 @@ void loop()
     vReal[currentSample] = (double)analogRead(A0);
     currentSample++;
     isReadyToRead = false;
-    if (currentSample > samples)
+    if (currentSample >= samples)
     {
       currentSample = 0;
       isReadyToCompute = true;
     }
   }
 
-  if (isReadyToCompute && lastTimeExecutedFFT + 500 < millis())
+  if (isReadyToCompute && lastTimeExecutedFFT + 40 < millis())
   {
     for (int i = 0; i < samples; i++)
     {
-      vReal[i] -= 512;        // remove dc value
-      vImag[i] = 0.0;         // fill imaginary values with zero
+      vReal[i] -= 512; // remove dc value
+      vImag[i] = 0.0;  // fill imaginary values with zero
     }
     // Serial.println("Data:");
     // PrintVector(vReal, samples, SCL_TIME);
@@ -121,8 +119,7 @@ void loop()
     // Serial.println("Computed magnitudes:");
     // PrintVector(vReal, samples, SCL_FREQUENCY);
 
-    
-    double x;             // Print peak value
+    double x; // Print peak value
     double v;
     Serial.print("Peak: ");
     FFT.majorPeak(&x, &v);
@@ -130,12 +127,23 @@ void loop()
     Serial.print(", ");
     Serial.println(v, 2);
     Serial.println();
-    
-    // drawOLEDImageFromSamples(8);
+
+    drawOLEDImageFromSamples(10);
 
     lastTimeExecutedFFT = millis();
     isReadyToCompute = false;
   }
+
+  // test for oled display
+  // if (lastTimeExecutedOLED + 5000 < millis())
+  // {
+  //   Serial.print("Free Heap: ");
+  //   Serial.println(ESP.getFreeHeap());
+  //   display.clearDisplay();
+  //   display.fillRect(20, 20, 30, 30, WHITE);
+  //   display.display();
+  //   lastTimeExecutedOLED = millis();
+  // }
 }
 
 void PrintVector(double *vData, uint16_t bufferSize, uint8_t scaleType)
@@ -176,34 +184,56 @@ void drawOLEDImageFromSamples(int frequencies)
 {
   display.clearDisplay();
 
-  int currentFrequency = samplingFrequency;
-  int sampleCount = samples / 4;
+  int currentFrequency = samplingFrequency / 2;
+  int frequencyStep = currentFrequency / frequencies;
+  int sampleCount = samples * frequencyStep / samplingFrequency;
+  int currentSample;
+  int usedSamples;
 
   for (int i = 0; i < frequencies; i++)
   {
-    currentFrequency = currentFrequency / 2;
-    sampleCount = sampleCount / 2;
-    int currentSample = samples * currentFrequency / samplingFrequency;
+    currentSample = samples * currentFrequency / samplingFrequency;
 
     // Calculate average magnitude
     int avgMagnitude = 0;
-    if (i != 0)
+    if (i == 0)
     {
+      // for the max frequency you can't use the samples above it
+      usedSamples = 0;
       for (int i = 0; i < sampleCount; i++)
       {
-        avgMagnitude += vReal[currentSample + i];
-        avgMagnitude += vReal[currentSample - (i + 1)];
+        if (vReal[currentSample - i] < 3000)
+          continue;
+        else
+        {
+          avgMagnitude += vReal[currentSample - i];
+          usedSamples++;
+        }
       }
-      avgMagnitude = avgMagnitude / (sampleCount*2);
+      if (usedSamples == 0)
+        avgMagnitude = 0;
+      else
+        avgMagnitude = avgMagnitude / usedSamples;
     }
     else
     {
-      // for the max frequency you can't use the samples above it
-      for (int i = 0; i < sampleCount; i++)
+      usedSamples = 0;
+      currentFrequency -= frequencyStep;
+      for (int i = 0; i < sampleCount / 2; i++)
       {
-        avgMagnitude += vReal[currentSample - i];
+        if (vReal[currentSample - i] < 3000)
+          continue;
+        else
+        {
+          avgMagnitude += vReal[currentSample + i];
+          avgMagnitude += vReal[currentSample - (i + 1)];
+          usedSamples++;
+        }
       }
-      avgMagnitude = avgMagnitude / sampleCount;
+      if (usedSamples == 0)
+        avgMagnitude = 0;
+      else
+        avgMagnitude = avgMagnitude / usedSamples;
     }
 
     Serial.print("Average magnitude at sample: ");
@@ -214,17 +244,23 @@ void drawOLEDImageFromSamples(int frequencies)
     Serial.print(avgMagnitude);
     Serial.print(", ");
 
-    int rectHeight = map(avgMagnitude, 0, 256, 0, 64);
+    int rectHeight = map(avgMagnitude, 0, 5000, 0, 64);
+    if (rectHeight > 64)
+    {
+      rectHeight = 64; // make sure that rectHeight isn't higher than the limit
+    }
+    else if (rectHeight <= 0)
+    {
+      rectHeight = 1;
+    }
+
     int rectWidth = SCREEN_WIDTH / frequencies;
-    int rectPosX = i * SCREEN_WIDTH / frequencies;
-    int rectPosY = 64;
+    int rectPosX = 128 - i * SCREEN_WIDTH / frequencies;
+    int rectPosY = 64 - rectHeight;
 
     Serial.println(rectHeight);
 
-    if (rectHeight != 0)
-    {
-      // display.fillRect(rectPosX, rectPosY, rectWidth, rectHeight, WHITE);
-    }
+    display.fillRect(rectPosX, rectPosY, rectWidth, rectHeight, WHITE);
   }
 
   display.display();
