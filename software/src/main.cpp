@@ -128,7 +128,7 @@ void loop()
     Serial.println(v, 2);
     Serial.println();
 
-    drawOLEDImageFromSamples(10);
+    drawOLEDImageFromSamples(9);
 
     lastTimeExecutedFFT = millis();
     isReadyToCompute = false;
@@ -188,9 +188,8 @@ void drawOLEDImageFromSamples(int frequencies)
   int frequencyStep = currentFrequency / frequencies;
   int sampleCount = samples * frequencyStep / samplingFrequency;
   int currentSample;
-  int usedSamples;
 
-  for (int i = 0; i < frequencies; i++)
+  for (int i = 1; i < frequencies; i++)
   {
     currentSample = samples * currentFrequency / samplingFrequency;
 
@@ -199,41 +198,31 @@ void drawOLEDImageFromSamples(int frequencies)
     if (i == 0)
     {
       // for the max frequency you can't use the samples above it
-      usedSamples = 0;
-      for (int i = 0; i < sampleCount; i++)
+      for (int i = 0; i < sampleCount / 2; i++)
       {
-        if (vReal[currentSample - i] < 2000)
+        if (vReal[currentSample - i] < 500)
           continue;
         else
         {
           avgMagnitude += vReal[currentSample - i];
-          usedSamples++;
         }
       }
-      if (usedSamples == 0)
-        avgMagnitude = 0;
-      else
-        avgMagnitude = avgMagnitude / usedSamples;
+      avgMagnitude = avgMagnitude / sampleCount;
     }
     else
     {
-      usedSamples = 0;
       currentFrequency -= frequencyStep;
       for (int i = 0; i < sampleCount / 2; i++)
       {
-        if (vReal[currentSample - i] < 2000)
+        if (vReal[currentSample - i] < 500)
           continue;
         else
         {
           avgMagnitude += vReal[currentSample + i];
           avgMagnitude += vReal[currentSample - (i + 1)];
-          usedSamples++;
         }
       }
-      if (usedSamples == 0)
-        avgMagnitude = 0;
-      else
-        avgMagnitude = avgMagnitude / usedSamples;
+      avgMagnitude = avgMagnitude / sampleCount;
     }
 
     Serial.print("Average magnitude at sample: ");
@@ -244,7 +233,7 @@ void drawOLEDImageFromSamples(int frequencies)
     Serial.print(avgMagnitude);
     Serial.print(", ");
 
-    int rectHeight = map(avgMagnitude, 0, 5000, 0, 64);
+    int rectHeight = map(avgMagnitude, 0, 1000, 0, 64);
     if (rectHeight > 64)
     {
       rectHeight = 64; // make sure that rectHeight isn't higher than the limit
@@ -254,8 +243,8 @@ void drawOLEDImageFromSamples(int frequencies)
       rectHeight = 1;
     }
 
-    int rectWidth = SCREEN_WIDTH / frequencies;
-    int rectPosX = 128 - i * SCREEN_WIDTH / frequencies;
+    int rectWidth = SCREEN_WIDTH / (frequencies-1);
+    int rectPosX = 128 - i * SCREEN_WIDTH / (frequencies-1);
     int rectPosY = 64 - rectHeight;
 
     Serial.println(rectHeight);
