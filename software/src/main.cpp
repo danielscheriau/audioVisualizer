@@ -98,7 +98,7 @@ void loop()
     }
   }
 
-  if (isReadyToCompute && lastTimeExecutedFFT + 40 < millis())
+  if (isReadyToCompute && lastTimeExecutedFFT + 50 < millis())
   {
     for (int i = 0; i < samples; i++)
     {
@@ -128,22 +128,11 @@ void loop()
     Serial.println(v, 2);
     Serial.println();
 
-    drawOLEDImageFromSamples(9);
+    drawOLEDImageFromSamples(5);
 
     lastTimeExecutedFFT = millis();
     isReadyToCompute = false;
   }
-
-  // test for oled display
-  // if (lastTimeExecutedOLED + 5000 < millis())
-  // {
-  //   Serial.print("Free Heap: ");
-  //   Serial.println(ESP.getFreeHeap());
-  //   display.clearDisplay();
-  //   display.fillRect(20, 20, 30, 30, WHITE);
-  //   display.display();
-  //   lastTimeExecutedOLED = millis();
-  // }
 }
 
 void PrintVector(double *vData, uint16_t bufferSize, uint8_t scaleType)
@@ -184,72 +173,66 @@ void drawOLEDImageFromSamples(int frequencies)
 {
   display.clearDisplay();
 
-  int currentFrequency = samplingFrequency / 2;
-  int frequencyStep = currentFrequency / frequencies;
-  int sampleCount = samples * frequencyStep / samplingFrequency;
-  int currentSample;
+  int currentFrequency = 8192;
+  // int currentFrequency = samplingFrequency / 2;  // max frequency you could show
+  int sampleCount = samples / 4;
+  int currentSample = samples /2;
 
-  for (int i = 1; i < frequencies; i++)
+  for (int i = 1; i <= frequencies; i++)
   {
-    currentSample = samples * currentFrequency / samplingFrequency;
 
     // Calculate average magnitude
     int avgMagnitude = 0;
-    if (i == 0)
+    if (i == 1)
     {
       // for the max frequency you can't use the samples above it
       for (int i = 0; i < sampleCount / 2; i++)
       {
-        if (vReal[currentSample - i] < 500)
-          continue;
-        else
-        {
-          avgMagnitude += vReal[currentSample - i];
-        }
+        avgMagnitude += vReal[currentSample - i];
       }
       avgMagnitude = avgMagnitude / sampleCount;
     }
     else
     {
-      currentFrequency -= frequencyStep;
+      sampleCount /= 2;
+      currentFrequency /= 2;
+      currentSample /= 2;
       for (int i = 0; i < sampleCount / 2; i++)
       {
-        if (vReal[currentSample - i] < 500)
-          continue;
-        else
-        {
-          avgMagnitude += vReal[currentSample + i];
-          avgMagnitude += vReal[currentSample - (i + 1)];
-        }
+        avgMagnitude += vReal[currentSample + i];
+        avgMagnitude += vReal[currentSample - (i + 1)];
       }
       avgMagnitude = avgMagnitude / sampleCount;
     }
 
-    Serial.print("Average magnitude at sample: ");
-    Serial.println(currentSample);
-
-    Serial.print(currentFrequency);
-    Serial.print("Hz, ");
-    Serial.print(avgMagnitude);
-    Serial.print(", ");
-
-    int rectHeight = map(avgMagnitude, 0, 1000, 0, 64);
-    if (rectHeight > 64)
+    int rectHeight = map(avgMagnitude, 0, 2500, 0, 50);
+    if (rectHeight > 50)
     {
-      rectHeight = 64; // make sure that rectHeight isn't higher than the limit
+      rectHeight = 50; // make sure that rectHeight isn't higher than the limit
     }
     else if (rectHeight <= 0)
     {
       rectHeight = 1;
     }
 
-    int rectWidth = SCREEN_WIDTH / (frequencies-1);
-    int rectPosX = 128 - i * SCREEN_WIDTH / (frequencies-1);
+    int rectWidth = SCREEN_WIDTH / frequencies;
+    int rectPosX = 128 - i * rectWidth;
     int rectPosY = 64 - rectHeight;
 
-    Serial.println(rectHeight);
-
     display.fillRect(rectPosX, rectPosY, rectWidth, rectHeight, WHITE);
+
+
+    Serial.print("Average magnitude at sample: ");
+    Serial.print(currentSample);
+    Serial.print(" with ");
+    Serial.print(sampleCount);
+    Serial.println(" samples used");
+
+    Serial.print(currentFrequency);
+    Serial.print("Hz, ");
+    Serial.print(avgMagnitude);
+    Serial.print(", ");
+    Serial.println(rectHeight);
   }
 
   display.display();
